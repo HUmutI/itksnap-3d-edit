@@ -97,6 +97,21 @@ GlobalState
   m_PaintbrushSettings.watershed.level = 0.2;
   m_PaintbrushSettings.watershed.smooth_iterations = 15;
 
+  // Set 3D editing tool defaults
+  m_Brush3DSettings.sub_tool = PAINT3D_BRUSH;
+  m_Brush3DSettings.radius = 3;
+  m_Brush3DSettings.shape = PAINTBRUSH_ROUND;
+
+  // Off by default, matching the 2D paintbrush. With isotropic on, the radius
+  // is measured in units of the SMALLEST spacing, so on a typical chest CT
+  // (~0.9 x 0.9 x 0.5 mm) a small brush collapses to a needle along z and
+  // covers no in-plane neighbors at all. Voxel-space radii are what a user
+  // adjusting "brush size" expects.
+  m_Brush3DSettings.isotropic = false;
+  m_Brush3DSettings.depth = 0;
+  m_Brush3DSettings.closing_radius = 2;
+  m_Brush3DSettings.island_any_label = false;
+
 
   m_PolygonDrawingContextMenuModel = NewSimpleConcreteProperty(false);
 

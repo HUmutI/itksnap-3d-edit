@@ -23,6 +23,7 @@
 #include "QtActionCoupling.h"
 #include "QtMenuCoupling.h"
 #include "MeshManager.h"
+#include "Brush3DModel.h"
 
 ViewPanel3D::ViewPanel3D(QWidget *parent) :
   SNAPComponent(parent),
@@ -117,6 +118,33 @@ ViewPanel3D::onModelUpdate(const EventBucket &bucket)
   if (bucket.HasEvent(ValueChangedEvent(), gs->GetToolbarMode3DModel()))
   {
     UpdateActionButtons();
+  }
+
+  if (bucket.HasEvent(Brush3DModel::Brush3DStateEvent()))
+  {
+    UpdateActionButtons();
+
+    // An island too large to delete without asking. Defer the dialog to the
+    // event loop: we are currently inside a VTK mouse event with the pointer
+    // grabbed, and opening a modal dialog from there wedges the grab.
+    if (m_Model->GetBrush3DModel()->IsIslandConfirmPending())
+      QTimer::singleShot(0, this, SLOT(onConfirmIslandDelete()));
+  }
+
+  if (bucket.HasEvent(Brush3DModel::Brush3DInvalidLabelEvent()))
+  {
+    QTimer::singleShot(0, this, SLOT(onBrush3DInvalidLabel()));
+  }
+
+  if (bucket.HasEvent(SegmentationChangeEvent()) &&
+      gs->GetToolbarMode3D() == PAINT3D_MODE)
+  {
+    // While the 3D editing tool is active the 3D view IS the editing surface,
+    // so it must never show a stale mesh. This covers the tool's own edits and,
+    // just as importantly, undo and redo: those bump the image MTime but
+    // otherwise leave the mesh untouched, which would show the user a surface
+    // that no longer matches the segmentation.
+    on_btnUpdateMesh_clicked();
   }
 
   if (bucket.HasEvent(ActiveLayerChangeEvent()) || bucket.HasEvent(LayerChangeEvent()) || bucket.HasEvent(MeshContentChangeEvent()))
@@ -282,6 +310,13 @@ void ViewPanel3D::Initialize(GlobalUIModel *globalUI)
 
   // Coupling for the color bar enabled state
   makeCoupling(ui->actionColorBar_Visible, m_Model->GetColorBarEnabledByUserModel());
+
+  // Listen to the 3D editing tool
+  connectITK(m_Model->GetBrush3DModel(), Brush3DModel::Brush3DStateEvent());
+  connectITK(m_Model->GetBrush3DModel(), Brush3DModel::Brush3DInvalidLabelEvent());
+
+  // Refresh the mesh on any segmentation change while the 3D tool is active
+  connectITK(globalUI->GetDriver(), SegmentationChangeEvent());
 
   connectITK(globalUI->GetDriver(), MeshContentChangeEvent());
   connectITK(globalUI->GetDriver(), ActiveLayerChangeEvent());
@@ -632,7 +667,50 @@ void ViewPanel3D::UpdateActionButtons()
       ui->btnCancel->setVisible(true);
       ui->btnFlip->setVisible(true);
       break;
+    case PAINT3D_MODE:
+      // The editing tools apply immediately; Ctrl+Z is the undo affordance.
+      // Cancel is only meaningful for a bridge awaiting its second endpoint,
+      // and UIF_MESH_ACTION_PENDING already gates its enabled state.
+      ui->btnAccept->setVisible(false);
+      ui->btnCancel->setVisible(true);
+      ui->btnFlip->setVisible(false);
+      break;
     }
+}
+
+void ViewPanel3D::onBrush3DInvalidLabel()
+{
+  // Only nag once per session: the message is a setup mistake, not an error the
+  // user needs repeated for every click.
+  if(m_Brush3DLabelWarningShown)
+    return;
+  m_Brush3DLabelWarningShown = true;
+
+  QMessageBox::information(
+        this, tr("Select a drawing label"),
+        tr("The active drawing label is \"Clear Label\".\n\n"
+           "The 3D brush, bridge and fill-hole tools add material using the "
+           "active label, so with \"Clear Label\" selected they would erase "
+           "instead of adding.\n\n"
+           "Pick the label you are segmenting in the Segmentation Labels panel, "
+           "then try again."));
+}
+
+void ViewPanel3D::onConfirmIslandDelete()
+{
+  Brush3DModel *bm = m_Model->GetBrush3DModel();
+  if(!bm->IsIslandConfirmPending())
+    return;
+
+  QString msg = tr("The connected region you clicked contains at least %1 voxels. "
+                   "Delete all of it?").arg(bm->GetPendingIslandVoxels());
+
+  if(QMessageBox::question(this, tr("Delete connected region"), msg,
+                           QMessageBox::Yes | QMessageBox::No,
+                           QMessageBox::No) == QMessageBox::Yes)
+    bm->ConfirmPendingIslandDelete();
+  else
+    bm->CancelPendingIslandDelete();
 }
 
 void ViewPanel3D::on_actionClear_Rendering_triggered()

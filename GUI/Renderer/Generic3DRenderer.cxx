@@ -44,6 +44,9 @@
 #include "vtkSphereSource.h"
 #include "vtkImplicitPlaneWidget.h"
 #include "vtkTransformPolyDataFilter.h"
+#include "vtkTubeFilter.h"
+#include "vtkCellPicker.h"
+#include "vtkProp3D.h"
 #include "vtkCubeSource.h"
 #include "vtkCoordinate.h"
 #include "vtkQuadricLODActor.h"
@@ -66,6 +69,7 @@
 
 #include <vnl/vnl_cross.h>
 #include <chrono>
+#include <cmath>
 #include <thread>
 
 
@@ -87,6 +91,19 @@ Generic3DRenderer::Generic3DRenderer()
 {
   // Create a picker
   m_Picker = vtkSmartPointer<Window3DPicker>::New();
+
+  // Create a separate cell picker used by the 3D segmentation editing tools.
+  // PickFromListOn() is mandatory here: without it the picker would also
+  // consider the three axis line actors (which span the whole volume and would
+  // win nearly every pick), the image cube outline, the spray glyphs, the
+  // scalpel plane widget's actors and - most importantly - the vtkVolume props
+  // created by volume rendering, which vtkCellPicker ray-casts against an
+  // opacity isovalue and which would silently shadow the mesh surface.
+  // The pick list is (re)built in UpdateMeshAssembly() and emptied in
+  // ResetMeshAssembly().
+  m_CellPicker = vtkSmartPointer<vtkCellPicker>::New();
+  m_CellPicker->SetTolerance(1e-6);
+  m_CellPicker->PickFromListOn();
 
   // Coordinate mapper
   m_CoordinateMapper = vtkSmartPointer<vtkCoordinate>::New();
@@ -142,6 +159,81 @@ Generic3DRenderer::Generic3DRenderer()
   m_SprayActor = vtkSmartPointer<vtkActor>::New();
   m_SprayActor->SetMapper(mapper_spray);
   m_SprayActor->SetProperty(m_SprayProperty);
+
+  // ------------------ 3D BRUSH PREVIEW ----------------------------
+
+  // The brush preview is a unit sphere that gets scaled and placed by a
+  // transform. As with the spray glyphs, the transform is authored in voxel
+  // index space and left-multiplied by the main image's NIFTI s-form, so the
+  // caller can talk in voxel coordinates.
+  m_BrushPreviewSource = vtkSmartPointer<vtkSphereSource>::New();
+  m_BrushPreviewSource->SetRadius(1.0);
+  m_BrushPreviewSource->SetCenter(0.0, 0.0, 0.0);
+  m_BrushPreviewSource->SetThetaResolution(24);
+  m_BrushPreviewSource->SetPhiResolution(16);
+
+  m_BrushPreviewTransform = vtkSmartPointer<vtkTransform>::New();
+
+  m_BrushPreviewTransformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+  m_BrushPreviewTransformFilter->SetInputConnection(m_BrushPreviewSource->GetOutputPort());
+  m_BrushPreviewTransformFilter->SetTransform(m_BrushPreviewTransform.GetPointer());
+
+  // The preview is drawn as a wireframe rather than a translucent surface: a
+  // translucent sphere sitting exactly on top of an opaque mesh z-fights and
+  // depth-sorts badly, and at a radius of one voxel a translucent blob is
+  // essentially invisible.
+  m_BrushPreviewProperty = vtkSmartPointer<vtkProperty>::New();
+  m_BrushPreviewProperty->SetRepresentationToWireframe();
+  m_BrushPreviewProperty->SetLineWidth(1.0);
+  m_BrushPreviewProperty->SetLighting(false);
+  m_BrushPreviewProperty->SetColor(1.0, 1.0, 1.0);
+
+  vtkSmartPointer<vtkPolyDataMapper> mapper_brush = vtkSmartPointer<vtkPolyDataMapper>::New();
+  mapper_brush->SetInputConnection(m_BrushPreviewTransformFilter->GetOutputPort());
+
+  m_BrushPreviewActor = vtkSmartPointer<vtkActor>::New();
+  m_BrushPreviewActor->SetMapper(mapper_brush);
+  m_BrushPreviewActor->SetProperty(m_BrushPreviewProperty);
+
+  // The preview must never be a pick target
+  m_BrushPreviewActor->PickableOff();
+
+  // ------------------ 3D BRIDGE PREVIEW ----------------------------
+
+  // The bridge preview is a tube connecting two points. The line is authored in
+  // voxel index space and mapped to world space by the transform; the tube is
+  // generated downstream of the transform so that its radius is in world (mm)
+  // units and the tube stays circular under anisotropic voxel spacing.
+  m_BridgePreviewSource = vtkSmartPointer<vtkLineSource>::New();
+  m_BridgePreviewSource->SetResolution(1);
+
+  m_BridgePreviewTransform = vtkSmartPointer<vtkTransform>::New();
+
+  m_BridgePreviewTransformFilter = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+  m_BridgePreviewTransformFilter->SetInputConnection(m_BridgePreviewSource->GetOutputPort());
+  m_BridgePreviewTransformFilter->SetTransform(m_BridgePreviewTransform.GetPointer());
+
+  m_BridgePreviewTubeFilter = vtkSmartPointer<vtkTubeFilter>::New();
+  m_BridgePreviewTubeFilter->SetInputConnection(m_BridgePreviewTransformFilter->GetOutputPort());
+  m_BridgePreviewTubeFilter->SetNumberOfSides(16);
+  m_BridgePreviewTubeFilter->SetRadius(1.0);
+  m_BridgePreviewTubeFilter->CappingOn();
+
+  m_BridgePreviewProperty = vtkSmartPointer<vtkProperty>::New();
+  m_BridgePreviewProperty->SetRepresentationToWireframe();
+  m_BridgePreviewProperty->SetLineWidth(1.0);
+  m_BridgePreviewProperty->SetLighting(false);
+  m_BridgePreviewProperty->SetColor(1.0, 1.0, 1.0);
+
+  vtkSmartPointer<vtkPolyDataMapper> mapper_bridge = vtkSmartPointer<vtkPolyDataMapper>::New();
+  mapper_bridge->SetInputConnection(m_BridgePreviewTubeFilter->GetOutputPort());
+
+  m_BridgePreviewActor = vtkSmartPointer<vtkActor>::New();
+  m_BridgePreviewActor->SetMapper(mapper_bridge);
+  m_BridgePreviewActor->SetProperty(m_BridgePreviewProperty);
+
+  // The preview must never be a pick target
+  m_BridgePreviewActor->PickableOff();
 
   // ------------------ SCALPEL ----------------------------
 
@@ -326,6 +418,20 @@ Generic3DRenderer::UpdateMeshAssembly()
   for (auto it = actorMap->begin(); it != actorMap->end(); ++it)
     m_Renderer->AddActor(it->second);
 
+  // Rebuild the cell picker's pick list and the actor-to-label map so that the
+  // 3D editing tools pick only against the meshes currently on screen. Both
+  // must be rebuilt from scratch: ActorPool::RecycleAll() returns actors to a
+  // shared stack and hands them back out later for *different* labels, so a
+  // stale entry would report the wrong label (and, for the island-delete tool,
+  // would delete the wrong structure).
+  m_CellPicker->InitializePickList();
+  m_ActorLabelMap.clear();
+  for (auto it = actorMap->begin(); it != actorMap->end(); ++it)
+  {
+    m_CellPicker->AddPickList(it->second);
+    m_ActorLabelMap[it->second] = it->first;
+  }
+
   ApplyDisplayMappingPolicyChange();
 
   m_Renderer->Modified();
@@ -358,6 +464,12 @@ Generic3DRenderer::ResetMeshAssembly()
 
   for (auto it_actor = actorMap->begin(); it_actor != actorMap->end(); it_actor++)
     this->m_Renderer->RemoveActor(it_actor->second);
+
+  // Drop every reference to the actors that are about to be recycled. The pool
+  // reuses these actors for other labels, so keeping them in the pick list or in
+  // the label map would produce picks with the wrong label.
+  m_CellPicker->InitializePickList();
+  m_ActorLabelMap.clear();
 
   m_ActorPool->RecycleAll();
 
@@ -1175,4 +1287,184 @@ Generic3DRenderer::ComputeRayFromClick(int x, int y, Vector3d &point, Vector3d &
   // Get the viewport in-plane vectors
   m_CoordinateMapper->SetValue(x, y + 1, 0);
   dy = Vector3d(m_CoordinateMapper->GetComputedWorldValue(this->m_Renderer)) - point;
+}
+
+// ---------------------------------------------------------------------------
+// 3D segmentation editing (PAINT3D_MODE) support
+// ---------------------------------------------------------------------------
+
+bool
+Generic3DRenderer::GetMainImageVoxelToWorldMatrix(Matrix4d &sform) const
+{
+  if (!m_Model)
+    return false;
+
+  IRISApplication *app = m_Model->GetParentUI()->GetDriver();
+  if (!app->IsMainImageLoaded())
+    return false;
+
+  sform = app->GetCurrentImageData()->GetMain()->GetNiftiSform();
+  return true;
+}
+
+bool
+Generic3DRenderer::WorldToVoxelCIndex(const Vector3d &world_point, Vector3d &voxel_cindex) const
+{
+  if (!m_Model)
+    return false;
+
+  IRISApplication *app = m_Model->GetParentUI()->GetDriver();
+  if (!app->IsMainImageLoaded())
+    return false;
+
+  voxel_cindex =
+    app->GetCurrentImageData()->GetMain()->TransformNIFTICoordinatesToVoxelCIndex(world_point);
+  return true;
+}
+
+bool
+Generic3DRenderer::VoxelCIndexToWorld(const Vector3d &voxel_cindex, Vector3d &world_point) const
+{
+  if (!m_Model)
+    return false;
+
+  IRISApplication *app = m_Model->GetParentUI()->GetDriver();
+  if (!app->IsMainImageLoaded())
+    return false;
+
+  world_point =
+    app->GetCurrentImageData()->GetMain()->TransformVoxelCIndexToNIFTICoordinates(voxel_cindex);
+  return true;
+}
+
+bool
+Generic3DRenderer::PickMeshSurface(int       x,
+                                   int       y,
+                                   Vector3d &world_point,
+                                   Vector3d &world_normal,
+                                   LabelType &label)
+{
+  // Nothing on screen to pick against
+  if (m_ActorLabelMap.size() == 0)
+    return false;
+
+  if (!m_CellPicker->Pick(x, y, 0, this->m_Renderer))
+    return false;
+
+  vtkProp3D *prop = m_CellPicker->GetProp3D();
+  if (!prop)
+    return false;
+
+  // Look up the label of the actor that was hit. When the prop is not in the
+  // map we report a miss rather than returning true with label 0. Every actor
+  // in the picker's pick list is entered into m_ActorLabelMap by
+  // UpdateMeshAssembly(), so an unknown prop can only mean that the map and the
+  // pick list have gone out of sync. Reporting label 0 in that case would be
+  // read by the calling tool as the clear label, which for the island-delete
+  // tool would mean acting on the wrong structure. Failing the pick is safer.
+  auto it = m_ActorLabelMap.find(prop);
+  if (it == m_ActorLabelMap.end())
+    return false;
+
+  label = it->second;
+  world_point.set(m_CellPicker->GetPickPosition());
+  world_normal.set(m_CellPicker->GetPickNormal());
+
+  return true;
+}
+
+void
+Generic3DRenderer::SetBrushPreviewVisible(bool visible)
+{
+  // vtkRenderer::AddActor is a no-op when the actor is already present, and
+  // RemoveActor is a no-op when it is not, so no bookkeeping is needed here.
+  if (visible)
+    this->m_Renderer->AddActor(m_BrushPreviewActor);
+  else
+    this->m_Renderer->RemoveActor(m_BrushPreviewActor);
+}
+
+void
+Generic3DRenderer::SetBrushPreviewGeometry(const Vector3d &center_voxel, const Vector3d &radius_voxel)
+{
+  Matrix4d sform;
+  if (!this->GetMainImageVoxelToWorldMatrix(sform))
+    return;
+
+  // Transform that maps the unit sphere onto an ellipsoid centered at
+  // center_voxel with per-axis radii radius_voxel, in voxel index space
+  Matrix4d S;
+  S.set_identity();
+  for (unsigned int i = 0; i < 3; i++)
+  {
+    // Guard against a degenerate (zero) radius, which would collapse the sphere
+    S(i, i) = (radius_voxel[i] > 1e-6) ? radius_voxel[i] : 1e-6;
+    S(i, 3) = center_voxel[i];
+  }
+
+  // The full transform maps unit-sphere coordinates to world (NIFTI)
+  // coordinates: x_world = M * S * x_unit, i.e. the voxel-space placement is
+  // applied first and the voxel-to-world s-form second. This is the same
+  // multiplication order used by UpdateVolumeTransform() above, and vnl's
+  // row-major data_block() is exactly what vtkTransform::SetMatrix() expects
+  // (the same trick as m_SprayTransform in UpdateSprayGlyphAppearanceAndShape).
+  Matrix4d M = sform * S;
+  m_BrushPreviewTransform->SetMatrix(M.data_block());
+}
+
+void
+Generic3DRenderer::SetBridgePreviewVisible(bool visible)
+{
+  if (visible)
+    this->m_Renderer->AddActor(m_BridgePreviewActor);
+  else
+    this->m_Renderer->RemoveActor(m_BridgePreviewActor);
+}
+
+void
+Generic3DRenderer::SetBridgePreviewGeometry(const Vector3d &a_voxel,
+                                            const Vector3d &b_voxel,
+                                            double          radius_voxel)
+{
+  Matrix4d sform;
+  if (!this->GetMainImageVoxelToWorldMatrix(sform))
+    return;
+
+  // The line endpoints are authored in voxel index space; the transform filter
+  // downstream maps them into world coordinates
+  m_BridgePreviewSource->SetPoint1(a_voxel[0], a_voxel[1], a_voxel[2]);
+  m_BridgePreviewSource->SetPoint2(b_voxel[0], b_voxel[1], b_voxel[2]);
+  m_BridgePreviewTransform->SetMatrix(sform.data_block());
+
+  // The tube filter runs after the transform, i.e. in world (mm) space, so the
+  // radius has to be converted from voxel units. We use the mean of the column
+  // norms of the 3x3 block of the s-form (the average voxel size in mm), which
+  // is exact for isotropic voxels and a reasonable compromise otherwise.
+  double mm_per_voxel = 0.0;
+  for (unsigned int i = 0; i < 3; i++)
+  {
+    double sumsq = 0.0;
+    for (unsigned int j = 0; j < 3; j++)
+      sumsq += sform(j, i) * sform(j, i);
+    mm_per_voxel += std::sqrt(sumsq);
+  }
+  mm_per_voxel /= 3.0;
+
+  double r_world = radius_voxel * mm_per_voxel;
+  m_BridgePreviewTubeFilter->SetRadius(r_world > 1e-6 ? r_world : 1e-6);
+}
+
+void
+Generic3DRenderer::SetBrushPreviewColor(double r, double g, double b)
+{
+  m_BrushPreviewProperty->SetColor(r, g, b);
+  m_BridgePreviewProperty->SetColor(r, g, b);
+}
+
+void
+Generic3DRenderer::RenderNow()
+{
+  vtkRenderWindow *rwin = this->GetRenderWindow();
+  if (rwin)
+    rwin->Render();
 }

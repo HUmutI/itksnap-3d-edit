@@ -11,6 +11,7 @@
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkCommand.h>
+#include <vtkCallbackCommand.h>
 #include <QtVTKInteractionDelegateWidget.h>
 #include <vtkPointPicker.h>
 #include <vtkRendererCollection.h>
@@ -18,6 +19,9 @@
 #include <vtkInteractorStyleSwitch.h>
 #include "Window3DPicker.h"
 #include "IRISApplication.h"
+#include "Brush3DModel.h"
+#include <cassert>
+#include <string>
 
 class CursorPlacementInteractorStyle : public vtkInteractorStyleTrackballCamera
 {
@@ -189,7 +193,239 @@ protected:
 
 
 
+/**
+ * Interactor style for the 3D editing tool (PAINT3D_MODE).
+ *
+ * All of the logic lives in Brush3DModel; this class only routes mouse and key
+ * events and decides what to forward to the trackball camera.
+ *
+ * Bindings (see also the tooltip on action3DPaint):
+ *   left drag                 sub-tool primary (paint)
+ *   right drag                erase (brush sub-tool only)
+ *   middle drag               rotate camera
+ *   shift/ctrl + left drag    pan / spin camera (VTK defaults)
+ *   wheel                     dolly (VTK default)
+ *   [ ]                       brush radius
+ *   , .                       depth
+ *   Escape                    cancel a pending bridge endpoint
+ *
+ * Nothing is bound to Alt and nothing REQUIRES the wheel, because the OSMesa
+ * widget backend (QtVTKInteractionDelegateWidget) forwards only Ctrl and Shift
+ * and has no wheel handler.
+ */
+class Brush3DInteractorStyle : public vtkInteractorStyleTrackballCamera
+{
+public:
+  static Brush3DInteractorStyle* New();
+  vtkTypeMacro(Brush3DInteractorStyle, vtkInteractorStyleTrackballCamera)
+
+  irisGetSetMacro(Model, Generic3DModel *)
+
+  virtual void OnLeftButtonDown() override
+  {
+    // Ignore a second button pressed during a gesture. Letting it through would
+    // start a new stroke on top of the live one and orphan its undo deltas.
+    if(m_ActiveButton != 0)
+      return;
+
+    // A modifier always means "camera", so that muscle memory is preserved
+    if(this->Interactor->GetShiftKey() || this->Interactor->GetControlKey())
+      {
+      vtkInteractorStyleTrackballCamera::OnLeftButtonDown();
+      return;
+      }
+
+    if(this->Push(false))
+      m_ActiveButton = 1;
+    else
+      // Clicking empty space still rotates, exactly like the spray tool
+      vtkInteractorStyleTrackballCamera::OnLeftButtonDown();
+  }
+
+  virtual void OnLeftButtonUp() override
+  {
+    if(m_ActiveButton == 1)
+      {
+      this->Release();
+      m_ActiveButton = 0;
+      }
+    else
+      {
+      vtkInteractorStyleTrackballCamera::OnLeftButtonUp();
+      }
+  }
+
+  virtual void OnRightButtonDown() override
+  {
+    if(m_ActiveButton != 0)
+      return;
+
+    // Right-drag erases, mirroring the 2D paintbrush. It steals the trackball's
+    // dolly, which the mouse wheel already provides.
+    if(this->Interactor->GetShiftKey() || this->Interactor->GetControlKey()
+       || !this->IsBrushSubTool())
+      {
+      vtkInteractorStyleTrackballCamera::OnRightButtonDown();
+      return;
+      }
+
+    if(this->Push(true))
+      m_ActiveButton = 2;
+    else
+      vtkInteractorStyleTrackballCamera::OnRightButtonDown();
+  }
+
+  virtual void OnRightButtonUp() override
+  {
+    if(m_ActiveButton == 2)
+      {
+      this->Release();
+      m_ActiveButton = 0;
+      }
+    else
+      {
+      vtkInteractorStyleTrackballCamera::OnRightButtonUp();
+      }
+  }
+
+  // Middle button rotates, replacing the trackball's pan (which is still
+  // available as shift + left drag)
+  virtual void OnMiddleButtonDown() override
+  {
+    // Rotating mid-stroke would leave the style in VTKIS_ROTATE for the rest of
+    // the gesture, so ignore it entirely while painting.
+    if(m_ActiveButton != 0)
+      return;
+
+    this->GrabFocus(this->EventCallbackCommand);
+    this->StartRotate();
+  }
+
+  virtual void OnMiddleButtonUp() override
+  {
+    this->EndRotate();
+    if(this->Interactor)
+      this->ReleaseFocus();
+  }
+
+  virtual void OnMouseMove() override
+  {
+    Brush3DModel *bm = this->GetBrushModel();
+    if(!bm)
+      {
+      vtkInteractorStyleTrackballCamera::OnMouseMove();
+      return;
+      }
+
+    if(m_ActiveButton != 0)
+      {
+      bm->ProcessDragEvent(this->Interactor->GetEventPosition()[0],
+                           this->Interactor->GetEventPosition()[1]);
+      this->Interactor->Render();
+      return;
+      }
+
+    // A camera gesture is in progress: do not spend a pick on hovering
+    if(this->State != VTKIS_NONE)
+      {
+      vtkInteractorStyleTrackballCamera::OnMouseMove();
+      return;
+      }
+
+    bm->ProcessHoverEvent(this->Interactor->GetEventPosition()[0],
+                          this->Interactor->GetEventPosition()[1]);
+    this->Interactor->Render();
+  }
+
+  virtual void OnLeave() override
+  {
+    if(Brush3DModel *bm = this->GetBrushModel())
+      {
+      bm->ProcessLeaveEvent();
+      this->Interactor->Render();
+      }
+    vtkInteractorStyleTrackballCamera::OnLeave();
+  }
+
+  virtual void OnKeyPress() override
+  {
+    Brush3DModel *bm = this->GetBrushModel();
+    const char *key = this->Interactor->GetKeySym();
+    if(!bm || !key)
+      {
+      vtkInteractorStyleTrackballCamera::OnKeyPress();
+      return;
+      }
+
+    std::string k(key);
+    if(k == "bracketleft")        bm->IncrementBrushSize(-1);
+    else if(k == "bracketright")  bm->IncrementBrushSize(+1);
+    else if(k == "comma")         bm->IncrementDepth(-1);
+    else if(k == "period")        bm->IncrementDepth(+1);
+    else if(k == "Escape")        bm->ProcessCancelEvent();
+    else
+      {
+      vtkInteractorStyleTrackballCamera::OnKeyPress();
+      return;
+      }
+
+    this->Interactor->Render();
+  }
+
+protected:
+
+  Brush3DInteractorStyle() : m_Model(NULL), m_ActiveButton(0) {}
+  virtual ~Brush3DInteractorStyle() {}
+
+  Brush3DModel *GetBrushModel() const
+  {
+    return m_Model ? m_Model->GetBrush3DModel() : NULL;
+  }
+
+  bool IsBrushSubTool() const
+  {
+    if(!m_Model)
+      return false;
+    return m_Model->GetParentUI()->GetGlobalState()
+             ->GetBrush3DSettings().sub_tool == PAINT3D_BRUSH;
+  }
+
+  bool Push(bool erase)
+  {
+    Brush3DModel *bm = this->GetBrushModel();
+    if(!bm)
+      return false;
+
+    bool consumed = bm->ProcessPushEvent(this->Interactor->GetEventPosition()[0],
+                                         this->Interactor->GetEventPosition()[1],
+                                         erase);
+    if(consumed)
+      this->Interactor->Render();
+    return consumed;
+  }
+
+  void Release()
+  {
+    Brush3DModel *bm = this->GetBrushModel();
+    if(!bm)
+      return;
+
+    bm->ProcessReleaseEvent(this->Interactor->GetEventPosition()[0],
+                            this->Interactor->GetEventPosition()[1]);
+    this->Interactor->Render();
+  }
+
+private:
+  Generic3DModel *m_Model;
+
+  // 0 = none, 1 = left (paint), 2 = right (erase)
+  int m_ActiveButton;
+};
+
+
 vtkStandardNewMacro(CursorPlacementInteractorStyle)
+
+vtkStandardNewMacro(Brush3DInteractorStyle)
 
 vtkStandardNewMacro(SpraycanInteractorStyle)
 
@@ -212,6 +448,9 @@ GenericView3D::GenericView3D(QWidget *parent) :
 
   m_InteractionStyle[SPRAYPAINT_MODE]
       = vtkSmartPointer<SpraycanInteractorStyle>::New();
+
+  m_InteractionStyle[PAINT3D_MODE]
+      = vtkSmartPointer<Brush3DInteractorStyle>::New();
 }
 
 GenericView3D::~GenericView3D()
@@ -235,6 +474,9 @@ void GenericView3D::SetModel(Generic3DModel *model)
   ScalpelInteractorStyle::SafeDownCast(
         m_InteractionStyle[SCALPEL_MODE])->SetModel(model);
 
+  Brush3DInteractorStyle::SafeDownCast(
+        m_InteractionStyle[PAINT3D_MODE])->SetModel(model);
+
   // Listen to toolbar changes
   connectITK(m_Model->GetParentUI()->GetGlobalState()->GetToolbarMode3DModel(),
              ValueChangedEvent(), SLOT(onToolbarModeChange()));
@@ -249,8 +491,14 @@ void GenericView3D::SetModel(Generic3DModel *model)
 void GenericView3D::onToolbarModeChange()
 {
   int mode = (int) m_Model->GetParentUI()->GetGlobalState()->GetToolbarMode3D();
+  assert(mode >= 0 && mode < TOOLBAR_MODE_3D_COUNT);
   this->GetRenderWindow()->GetInteractor()->SetInteractorStyle(m_InteractionStyle[mode]);
-  setMouseTracking(mode == SCALPEL_MODE);
+  setMouseTracking(mode == SCALPEL_MODE || mode == PAINT3D_MODE);
+
+  // Leaving the editing tool must take its preview actors and any half-finished
+  // gesture with it
+  if(mode != PAINT3D_MODE && m_Model->GetBrush3DModel())
+    m_Model->GetBrush3DModel()->AbandonGesture();
 }
 
 void

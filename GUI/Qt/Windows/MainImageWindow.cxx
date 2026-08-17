@@ -196,6 +196,13 @@ MainImageWindow::MainImageWindow(QWidget *parent) :
   ui->action3DCrosshair->setActionGroup(grpToolbar3D);
   ui->action3DSpray->setActionGroup(grpToolbar3D);
   ui->action3DScalpel->setActionGroup(grpToolbar3D);
+  ui->action3DPaint->setActionGroup(grpToolbar3D);
+
+  // makeActionGroupCoupling maps enum ordinals to positions in the action
+  // group's action list, i.e., to setActionGroup() call order. PAINT3D_MODE
+  // is the last value of ToolbarMode3DType, so action3DPaint must be added
+  // to the group last.
+  assert(grpToolbar3D->actions().size() == PAINT3D_MODE + 1);
 
   // Make sure we initialize on the intro page
   ui->stackMain->setCurrentWidget(ui->pageSplash);
@@ -673,6 +680,7 @@ void MainImageWindow::Initialize(GlobalUIModel *model)
   activateOnFlag(ui->action3DTrackball, m_Model, UIF_BASEIMG_LOADED);
   activateOnFlag(ui->action3DScalpel, m_Model, UIF_IRIS_WITH_BASEIMG_LOADED);
   activateOnFlag(ui->action3DSpray, m_Model, UIF_IRIS_WITH_BASEIMG_LOADED);
+  activateOnFlag(ui->action3DPaint, m_Model, UIF_IRIS_WITH_BASEIMG_LOADED);
 
   activateOnFlag(ui->actionLayerInspector, m_Model, UIF_BASEIMG_LOADED);
   activateOnFlag(ui->actionImage_Contrast, m_Model, UIF_BASEIMG_LOADED);

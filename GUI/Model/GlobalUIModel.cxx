@@ -53,6 +53,7 @@
 #include <DisplayLayoutModel.h>
 #include <PaintbrushModel.h>
 #include <PaintbrushSettingsModel.h>
+#include <Brush3DSettingsModel.h>
 #include "PolygonSettingsModel.h"
 #include <SynchronizationModel.h>
 #include <SnakeParameterModel.h>
@@ -114,6 +115,10 @@ GlobalUIModel::GlobalUIModel()
   // Paintbrush settings
   m_PaintbrushSettingsModel = PaintbrushSettingsModel::New();
   m_PaintbrushSettingsModel->SetParentModel(this);
+
+  // 3D editing tool settings
+  m_Brush3DSettingsModel = Brush3DSettingsModel::New();
+  m_Brush3DSettingsModel->SetParentModel(this);
 
   // Registration model
   m_RegistrationModel = RegistrationModel::New();

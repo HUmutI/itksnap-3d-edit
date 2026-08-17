@@ -63,6 +63,7 @@ class ReorientImageModel;
 class DisplayLayoutModel;
 class PaintbrushModel;
 class PaintbrushSettingsModel;
+class Brush3DSettingsModel;
 class PolygonSettingsModel;
 class LayerGeneralPropertiesModel;
 class SynchronizationModel;
@@ -223,6 +224,9 @@ public:
 
   /** Model for managing paintbrush settings */
   irisGetMacro(PaintbrushSettingsModel, PaintbrushSettingsModel *)
+
+  /** Model for managing 3D editing tool settings */
+  irisGetMacro(Brush3DSettingsModel, Brush3DSettingsModel *)
 
   /** Model for managing polygon settings */
   irisGetMacro(PolygonSettingsModel, PolygonSettingsModel *)
@@ -436,6 +440,9 @@ protected:
 
   // Paintbrush settings
   SmartPtr<PaintbrushSettingsModel> m_PaintbrushSettingsModel;
+
+  // 3D editing tool settings
+  SmartPtr<Brush3DSettingsModel> m_Brush3DSettingsModel;
 
   // Polygon settings
   SmartPtr<PolygonSettingsModel> m_PolygonSettingsModel;

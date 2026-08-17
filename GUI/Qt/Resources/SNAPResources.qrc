@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/root">
         <file>paintbrush.gif</file>
+        <file>brush3d.png</file>
         <file>zoom3d.gif</file>
         <file alias="zoom.gif">zoom.gif</file>
         <file>spray.gif</file>

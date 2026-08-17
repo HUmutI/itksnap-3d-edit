@@ -110,6 +110,7 @@ MainControlPanel::MainControlPanel(MainImageWindow *parent) :
   ui->btnPolygonInspector->setVisible(false);
   ui->btnSnakeInspector->setVisible(false);
   ui->btnAnnotateInspector->setVisible(false);
+  ui->btnBrush3DInspector->setVisible(false);
 
   ui->btnUndo->setDefaultAction(FindUpstreamAction(this, "actionUndo"));
   ui->btnRedo->setDefaultAction(FindUpstreamAction(this, "actionRedo"));
@@ -130,6 +131,7 @@ MainControlPanel::MainControlPanel(MainImageWindow *parent) :
   ui->btnRotate3D->setDefaultAction(FindUpstreamAction(this, "action3DTrackball"));
   ui->btnScalpel->setDefaultAction(FindUpstreamAction(this, "action3DScalpel"));
   ui->btnSpray->setDefaultAction(FindUpstreamAction(this, "action3DSpray"));
+  ui->btnPaint3D->setDefaultAction(FindUpstreamAction(this, "action3DPaint"));
 }
 
 void MainControlPanel::SetModel(GlobalUIModel *model)
@@ -140,6 +142,7 @@ void MainControlPanel::SetModel(GlobalUIModel *model)
   ui->pageDisplayInspector->SetModel(m_Model->GetDisplayLayoutModel());
   ui->pageSyncInspector->SetModel(m_Model->GetSynchronizationModel());
   ui->pagePaintbrushTool->SetModel(m_Model->GetPaintbrushSettingsModel());
+  ui->pageBrush3DTool->SetModel(m_Model->GetBrush3DSettingsModel());
   ui->pageSnakeTool->SetModel(m_Model);
   ui->pagePolygonTool->SetModel(m_Model);
   ui->pageAnnotationTool->SetModel(m_Model);
@@ -193,6 +196,31 @@ void MainControlPanel::onModelUpdate(const EventBucket &bucket)
     // Click the button corresponding to the mode
     if(mode_inspector_btn[mode])
       mode_inspector_btn[mode]->click();
+    }
+
+  // Respond to changes in the 3D toolbar mode
+  if(bucket.HasEvent(ValueChangedEvent(), gs->GetToolbarMode3DModel()))
+    {
+    // Update the list of displayed buttons
+    ToolbarMode3DType mode3d = gs->GetToolbarMode3D();
+    ui->btnBrush3DInspector->setVisible(mode3d == PAINT3D_MODE);
+
+    if(mode3d == PAINT3D_MODE)
+      {
+      // Click the button so that the 3D editing tool page comes up
+      ui->btnBrush3DInspector->click();
+      }
+    else if(ui->stack->currentWidget() == ui->pageBrush3DTool)
+      {
+      // Leaving the tool while its page is showing: the inspector would
+      // otherwise stay parked on a page whose button is now hidden. Anything
+      // else the user navigated to in the meantime is left alone.
+      ToolbarModeType mode = gs->GetToolbarMode();
+      if(mode_inspector_btn[mode])
+        mode_inspector_btn[mode]->click();
+      else
+        ui->btnCursorInspector->click();
+      }
     }
 
   if(bucket.HasEvent(ValueChangedEvent(), gs->GetDrawingColorLabelModel()) ||
@@ -308,5 +336,14 @@ void MainControlPanel::on_btnAnnotateInspector_clicked(bool checked)
     {
     ui->stack->setCurrentWidget(ui->pageAnnotationTool);
     ui->grpInspector->setTitle(tr("Annotation Inspector"));
+    }
+}
+
+void MainControlPanel::on_btnBrush3DInspector_clicked(bool checked)
+{
+  if(checked)
+    {
+    ui->stack->setCurrentWidget(ui->pageBrush3DTool);
+    ui->grpInspector->setTitle(tr("3D Editing Tool Inspector"));
     }
 }

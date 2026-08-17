@@ -21,11 +21,17 @@ namespace itk
 class Command;
 }
 
+class Brush3DModel;
+
 class Generic3DModel : public AbstractModel
 {
 public:
 
   irisITKObjectMacro(Generic3DModel, AbstractModel)
+
+  // The 3D editing tool reaches into IntersectSegmentation as a fallback for
+  // when the rendered mesh is stale or absent
+  friend class Brush3DModel;
 
   // Special events
   itkEventMacro(SprayPaintEvent, IRISEvent)
@@ -166,6 +172,9 @@ public:
   // Get the spray points
   vtkPolyData *GetSprayPoints() const;
 
+  // Get the interaction model for the 3D editing tool (PAINT3D_MODE)
+  irisGetMacro(Brush3DModel, Brush3DModel *)
+
 protected:
 
   // Respond to updates
@@ -195,6 +204,9 @@ protected:
 
   // Set of spraypainted points in image coordinates
   vtkSmartPointer<vtkPolyData> m_SprayPoints;
+
+  // Interaction state for the 3D editing tool
+  SmartPtr<Brush3DModel> m_Brush3DModel;
 
   // On-screen endpoints of the scalpel line
   Vector2i m_ScalpelStart, m_ScalpelEnd;

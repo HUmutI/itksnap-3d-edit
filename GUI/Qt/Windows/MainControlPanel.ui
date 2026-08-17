@@ -731,6 +731,35 @@ QToolButton {
              </widget>
             </item>
             <item>
+             <widget class="QToolButton" name="btnBrush3DInspector">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>27</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;3D Editing Tool Inspector&lt;/span&gt;&lt;/p&gt;&lt;p&gt;Adjust settings associated with the 3D editing tool.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="icon">
+               <iconset resource="../Resources/SNAPResources.qrc">
+                <normaloff>:/root/brush3d.png</normaloff>:/root/brush3d.png</iconset>
+              </property>
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
+              <property name="autoExclusive">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="horizontalSpacer">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
@@ -765,6 +794,7 @@ QToolButton {
            </widget>
            <widget class="SnakeToolROIPanel" name="pageSnakeTool"/>
            <widget class="PaintbrushToolPanel" name="pagePaintbrushTool"/>
+           <widget class="Brush3DToolPanel" name="pageBrush3DTool"/>
            <widget class="PolygonToolPanel" name="pagePolygonTool"/>
            <widget class="AnnotationToolPanel" name="pageAnnotationTool"/>
            <widget class="QWidget" name="pageBlank"/>
@@ -912,6 +942,17 @@ QToolBar {
              </widget>
             </item>
             <item>
+             <widget class="QToolButton" name="btnPaint3D">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="icon">
+               <iconset resource="../Resources/SNAPResources.qrc">
+                <normaloff>:/root/brush3d.png</normaloff>:/root/brush3d.png</iconset>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="horizontalSpacer_3">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
@@ -964,6 +1005,12 @@ QToolBar {
    <class>PaintbrushToolPanel</class>
    <extends>QWidget</extends>
    <header>PaintbrushToolPanel.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>Brush3DToolPanel</class>
+   <extends>QWidget</extends>
+   <header>Brush3DToolPanel.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>

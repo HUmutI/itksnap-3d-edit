@@ -14,6 +14,7 @@
 #include "itkImage.h"
 #include "MeshOptions.h"
 #include "ImageRayIntersectionFinder.h"
+#include "Brush3DModel.h"
 
 // All the VTK stuff
 #include "vtkPolyData.h"
@@ -54,6 +55,10 @@ Generic3DModel::Generic3DModel()
 
   // Scalpel
   m_ScalpelStatus = SCALPEL_LINE_NULL;
+
+  // 3D editing tool
+  m_Brush3DModel = Brush3DModel::New();
+  m_Brush3DModel->SetParent(this);
 
   // Reset clear time
   m_ClearTime = 0;
@@ -99,6 +104,11 @@ void Generic3DModel::Initialize(GlobalUIModel *parent)
 
   Rebroadcast(m_Driver, LayerChangeEvent(), StateMachineChangeEvent());
   Rebroadcast(m_Driver, ActiveLayerChangeEvent(), StateMachineChangeEvent());
+
+  // The 3D editing tool: its state drives UIF_MESH_ACTION_PENDING (a bridge
+  // waiting for its second endpoint), so the Cancel button needs to see it
+  Rebroadcast(m_Brush3DModel, Brush3DModel::Brush3DStateEvent(), StateMachineChangeEvent());
+  m_Brush3DModel->Initialize();
 }
 
 bool
@@ -130,6 +140,11 @@ Generic3DModel::CheckState(Generic3DModel::UIState state)
 
       else if (mode == SCALPEL_MODE)
         return m_ScalpelStatus == SCALPEL_LINE_COMPLETED;
+
+      else if (mode == PAINT3D_MODE)
+        // The 3D editing tools apply immediately (undo is the only affordance);
+        // the sole pending state is a bridge waiting for its second endpoint.
+        return m_Brush3DModel->IsBridgePointPending();
 
       else
         return false;
@@ -402,6 +417,10 @@ void Generic3DModel::CancelAction()
     // Reset the scalpel state
     m_ScalpelStatus = SCALPEL_LINE_NULL;
     InvokeEvent(ScalpelEvent());
+    }
+  else if(mode == PAINT3D_MODE)
+    {
+    m_Brush3DModel->ProcessCancelEvent();
     }
 }
 

@@ -49,6 +49,8 @@ private slots:
 
   void on_btnAnnotateInspector_clicked(bool checked);
 
+  void on_btnBrush3DInspector_clicked(bool checked);
+
 private:
 
   void updateLabelSelectionButton();

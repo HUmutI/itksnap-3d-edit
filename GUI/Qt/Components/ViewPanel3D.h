@@ -50,6 +50,12 @@ private slots:
 
   void onContextMenuUpdateRequested();
 
+  // Ask the user before deleting a large connected region in the 3D view
+  void onConfirmIslandDelete();
+
+  // Explain why an additive 3D edit was refused with the clear label active
+  void onBrush3DInvalidLabel();
+
   void on_btnUpdateMesh_clicked();
 
   void on_btnScreenshot_clicked();
@@ -92,6 +98,9 @@ private:
   QMenu *m_ContextButtonMenu;
 
   QTimer *m_RenderTimer;
+
+  // Whether the "pick a drawing label" explanation has already been shown
+  bool m_Brush3DLabelWarningShown = false;
 
   // A future used to track background rendering
   QFuture<void> m_RenderFuture;

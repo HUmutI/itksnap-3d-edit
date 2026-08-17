@@ -65,10 +65,13 @@ void LabelImageWrapper::UpdateWrappedImages(
   for(auto p : m_TimePointUndoManagers)
     delete p;
 
-  // Set up new undo managers
+  // Set up new undo managers. The budget is deliberately generous: a single
+  // 3D brush stamp of radius 5 encodes to roughly 350 RLE pairs, so with the
+  // old (4, 200000) budget a handful of 3D strokes was enough to evict the
+  // entire undo history.
   m_TimePointUndoManagers.resize(this->GetNumberOfTimePoints());
   for(auto &p : m_TimePointUndoManagers)
-    p = new UndoManagerType(4, 200000);
+    p = new UndoManagerType(8, 800000);
 
   // Modified event on the image is rebroadcast as the WrapperImageChangeEvent
   Rebroadcaster::Rebroadcast(image_4d, itk::ModifiedEvent(), this, WrapperImageChangeEvent());

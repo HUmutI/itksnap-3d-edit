@@ -3,6 +3,7 @@
 
 #include <QtVTKRenderWindowBox.h>
 #include <SNAPCommon.h>
+#include <GlobalState.h>
 
 #include <vtkSmartPointer.h>
 
@@ -42,8 +43,9 @@ protected:
   // The model in charge
   Generic3DModel *m_Model;
 
-  // The interactor styles corresponding to each mode
-  vtkSmartPointer<vtkInteractorStyle> m_InteractionStyle[4];
+  // The interactor styles corresponding to each mode. This array is indexed
+  // directly by ToolbarMode3DType, so it must have one entry per enum value.
+  vtkSmartPointer<vtkInteractorStyle> m_InteractionStyle[TOOLBAR_MODE_3D_COUNT];
 
   vtkSmartPointer<CursorPlacementInteractorStyle> m_CursorPlacementStyle;
 };

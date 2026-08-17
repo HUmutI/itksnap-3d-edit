@@ -133,7 +133,23 @@ enum ToolbarMode3DType
   TRACKBALL_MODE = 0,
   CROSSHAIRS_3D_MODE,
   SPRAYPAINT_MODE,
-  SCALPEL_MODE
+  SCALPEL_MODE,
+  PAINT3D_MODE
+};
+
+/**
+ * Number of entries in ToolbarMode3DType. Used to size the array of VTK
+ * interactor styles in GenericView3D, which is indexed by the enum value.
+ */
+const int TOOLBAR_MODE_3D_COUNT = PAINT3D_MODE + 1;
+
+/** Sub-tools of the 3D editing (PAINT3D_MODE) tool */
+enum Paint3DSubTool
+{
+  PAINT3D_BRUSH = 0,
+  PAINT3D_DELETE_ISLAND,
+  PAINT3D_BRIDGE,
+  PAINT3D_FILL_HOLE
 };
 
 enum AnnotationMode
@@ -171,6 +187,32 @@ struct PaintbrushSettings
 
   PaintbrushWatershedSettings watershed;
   std::string dl_pipeline_id;
+};
+
+/** Settings for the 3D view editing tool */
+struct Brush3DSettings
+{
+  // Which of the four sub-tools is active
+  Paint3DSubTool sub_tool;
+
+  // Brush radius, in voxels
+  double radius;
+
+  // Brush footprint (round = ball, rectangular = cube)
+  PaintbrushShape shape;
+
+  // Whether the brush is a sphere in physical space rather than in voxel space
+  bool isotropic;
+
+  // Offset of the brush center from the picked surface point, in voxels along
+  // the view ray. Positive values move away from the camera.
+  int depth;
+
+  // Structuring element radius for the fill-hole sub-tool, in voxels
+  double closing_radius;
+
+  // Delete-island: match any non-zero label rather than just the picked one
+  bool island_any_label;
 };
 
 /** Annotation settings */
@@ -311,6 +353,12 @@ public:
 
   /** Set the current paintbrush settings */
   irisSetMacro(PaintbrushSettings, const PaintbrushSettings &);
+
+  /** Get the current 3D editing tool settings */
+  irisGetMacro(Brush3DSettings, const Brush3DSettings &);
+
+  /** Set the current 3D editing tool settings */
+  irisSetMacro(Brush3DSettings, const Brush3DSettings &);
 
   /** Get the current annotation settings */
   irisGetMacro(AnnotationSettings, const AnnotationSettings &);
@@ -561,6 +609,9 @@ private:
 
   // Paintbrush settings
   PaintbrushSettings m_PaintbrushSettings;
+
+  // 3D editing tool settings
+  Brush3DSettings m_Brush3DSettings;
 
   // Initial path for opening images
   SmartPtr<ConcreteSimpleStringProperty> m_InitialDirectoryModel;

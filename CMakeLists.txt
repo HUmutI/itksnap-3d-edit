@@ -261,6 +261,7 @@ SET(LOGIC_CXX
   Logic/Framework/IRISApplication.cxx
   Logic/Framework/IRISImageData.cxx
   Logic/Framework/LayerIterator.cxx
+  Logic/Framework/SegmentationEdit3D.cxx
   Logic/Framework/SNAPImageData.cxx
   Logic/Framework/TimePointProperties.cxx
   Logic/Framework/UndoDataManager_LabelType.cxx
@@ -383,6 +384,7 @@ SET(LOGIC_HEADERS
   Logic/Common/SNAPRegistryIO.h
   Logic/Common/SNAPSegmentationROISettings.h
   Logic/Framework/DefaultBehaviorSettings.h
+  Logic/Framework/BrushStamp3D.h
   Logic/Framework/GenericImageData.h
   Logic/Framework/GlobalState.h
   Logic/Framework/ImageAnnotationData.h
@@ -393,6 +395,7 @@ SET(LOGIC_HEADERS
   Logic/Framework/LayerAssociation.txx
   Logic/Framework/LayerIterator.h
   Logic/Framework/SegmentationUpdateIterator.h
+  Logic/Framework/SegmentationEdit3D.h
   Logic/Framework/SNAPImageData.h
   Logic/Framework/TimePointProperties.h
   Logic/Framework/UndoDataManager.h
@@ -514,6 +517,8 @@ SET(LOGIC_HEADERS
 # These files have the UI model code, which is GUI-TK independent
 SET(UI_GENERIC_CXX
   GUI/Model/AnnotationModel.cxx
+  GUI/Model/Brush3DModel.cxx
+  GUI/Model/Brush3DSettingsModel.cxx
   GUI/Model/ColorLabelQuickListModel.cxx
   GUI/Model/ColorMapModel.cxx
   GUI/Model/CursorInspectionModel.cxx
@@ -595,6 +600,8 @@ SET(UI_GENERIC_HEADERS
   GUI/Model/AbstractLayerAssociatedModel.h
   GUI/Model/AbstractLayerInfoItemSetDomain.h
   GUI/Model/AnnotationModel.h
+  GUI/Model/Brush3DModel.h
+  GUI/Model/Brush3DSettingsModel.h
   GUI/Model/ColorMapModel.h
   GUI/Model/ColorLabelQuickListModel.h
   GUI/Model/CursorInspectionModel.h
@@ -679,6 +686,7 @@ SET(UI_GENERIC_HEADERS
 # These files contain the Qt-specific user interface source code
 SET(UI_QT_CXX
   GUI/Qt/Components/AnnotationToolPanel.cxx
+  GUI/Qt/Components/Brush3DToolPanel.cxx
   GUI/Qt/Components/CollapsableGroupBox.cxx
   GUI/Qt/Components/ColorLabelQuickListWidget.cxx
   GUI/Qt/Components/ColorMapInspector.cxx
@@ -791,6 +799,7 @@ SET(UI_QT_CXX
 # The header files for the UI project
 SET(UI_MOC_HEADERS
   GUI/Qt/Components/AnnotationToolPanel.h
+  GUI/Qt/Components/Brush3DToolPanel.h
   GUI/Qt/Components/CollapsableGroupBox.h
   GUI/Qt/Components/ColorLabelQuickListWidget.h
   GUI/Qt/Components/ColorMapInspector.h
@@ -929,6 +938,7 @@ SET(UI_NONMOC_HEADERS
 
 SET(UI_FORMS
   GUI/Qt/Components/AnnotationToolPanel.ui
+  GUI/Qt/Components/Brush3DToolPanel.ui
   GUI/Qt/Components/CollapsableGroupBox.ui
   GUI/Qt/Components/ColorMapInspector.ui
   GUI/Qt/Components/ContrastInspector.ui
